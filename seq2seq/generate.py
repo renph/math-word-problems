@@ -1,68 +1,33 @@
-import numpy as np
-import os
-import pandas as pd
-from sklearn.model_selection import train_test_split
+import argparse
+from utils import ArithmeticGenerator, MixedArithmeticGenerator
+
+parser = argparse.ArgumentParser(description='This script generates arithmetic problems.')
+parser.add_argument('--output-dir', type=str, default='output',
+                    help='Directory to save outputs')
+parser.add_argument('--max-bound', type=int, default=100,
+                    help='upper bound of operands (default: 100)')
+parser.add_argument('--ops', nargs='+', type=str, default=['+', '-', '*'],
+                    help='List of operators, default: (+, -, *)')
+parser.add_argument('--test-size', type=float, default=0.3,
+                    help='Proportion of test set, default: 0.3')
+parser.add_argument('--seed', type=int, default=1234,
+                    help='Set random seed, default: 1234')
+parser.add_argument('--mixed', action='store_true',
+                    help='generate problems with 2 or more operators')
 
 
-class ArithmeticGenerator:
-    def __init__(self, output_path, ops=('+', '-'), test_size=0.1, seed=1234):
-        self.ops = tuple(ops)
-        self.output_path = output_path
-        self.test_size = test_size
-        self.rand = np.random.RandomState(seed)
-
-        self.probSet = {}
-
-    def addProb(self, problem):
-        self.probSet[problem] = str(eval(problem))
-
-    def generate(self, bound=10):
-        if not os.path.exists(self.output_path):
-            os.mkdir(self.output_path)
-        for i in range(bound):
-            for j in range(bound):
-                for op in self.ops:
-                    self.addProb(f'{i}{op}{j}')
-        df = pd.DataFrame({"Question": list(self.probSet.keys()),
-                           "Answer": list(self.probSet.values())})
-        print(df.head())
-        df.to_csv(os.path.join(self.output_path, 'all.csv'), index=False)
-        train, val = train_test_split(df, test_size=self.test_size, random_state=self.rand)
-        train.to_csv(os.path.join(self.output_path, 'train.csv'), index=False)
-        val.to_csv(os.path.join(self.output_path, 'val.csv'), index=False)
-
-
-class MixedArithmeticGenerator(ArithmeticGenerator):
-    def generate(self, bound=10):
-        if not os.path.exists(self.output_path):
-            os.mkdir(self.output_path)
-        for i in range(bound):
-            for j in range(bound):
-                for op in self.ops:
-                    self.addProb(f'{i}{op}{j}')
-                    rand_op = self.rand.choice(self.ops)
-                    rand_num = self.rand.randint(bound)
-                    self.addProb(f'{i}{op}{j}{rand_op}{rand_num}')
-
-        df = pd.DataFrame({"Question": list(self.probSet.keys()),
-                           "Answer": list(self.probSet.values())})
-        print(df.head())
-        df.to_csv(os.path.join(self.output_path, 'all.csv'), index=False)
-        train, val = train_test_split(df, test_size=self.test_size, random_state=self.rand)
-        train.to_csv(os.path.join(self.output_path, 'train.csv'), index=False)
-        val.to_csv(os.path.join(self.output_path, 'val.csv'), index=False)
+def main(args):
+    args = parser.parse_args(args)
+    Generator = MixedArithmeticGenerator if args.mixed else ArithmeticGenerator
+    gen = Generator(output_root=args.output_dir, bound=args.max_bound,
+                    ops=args.ops, seed=args.seed,
+                    test_size=args.test_size)
+    gen.generate()
+    gen.save()
 
 
 if __name__ == '__main__':
-    bound = 100
-    seed = 4111
-    ops = ('+', '-', '*')
-    gen = ArithmeticGenerator(f'../tmp/train_arith_{len(ops)}_{bound}_{seed}', ops=ops, seed=seed,
-                              test_size=0.8)
-    gen.generate(bound)
-
-    # bound = 100
-    # seed = 1111
-    # ops = ('+', '-', '*')
-    # gen = MixedArithmeticGenerator(f'../tmp/train_mixedarith_{len(ops)}_{bound}_{seed}', ops=ops, seed=seed)
-    # gen.generate(bound)
+    args = None
+    # args = ['--output-dir', r'../tmp', '--max-bound', '100', '--seed', '1111',
+    #         '--test-size', '0.2']
+    main(args)
