@@ -1,5 +1,5 @@
 import argparse
-from utils import ArithmeticGenerator, MixedArithmeticGenerator
+from utils.generator import ArithmeticGenerator, MixedArithmeticGenerator
 
 parser = argparse.ArgumentParser(description='This script generates arithmetic problems.')
 parser.add_argument('--output-dir', type=str, default='output',

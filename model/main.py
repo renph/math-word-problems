@@ -8,25 +8,26 @@ import torch
 from torch import nn, optim
 from torchtext.data import Field, BucketIterator, TabularDataset
 
-from seq2seq import Encoder, Decoder, Seq2Seq
-from utils import MathLang
+from model.seq2seq import Encoder, Decoder, Seq2Seq
+from utils.config import Config
+import argparse
 
-SEED = 1234
-random.seed(SEED)
-torch.manual_seed(SEED)
+parser = argparse.ArgumentParser()
+parser.add_argument('--config', type=str, default='',
+                    help='Path to config file')
+
+args = parser.parse_args(args=['--config', 'config.txt'])
+if args.config:
+    args = Config(args.config)
+
+# SEED = 1234
+random.seed(args.seed)
+torch.manual_seed(args.seed)
 torch.backends.cudnn.deterministic = True
-
-# math_lang = MathLang('math-10')
-#
-# df = pd.read_csv("../tmp/train_arith_10/train.csv")
-# for q in df["Question"]:
-#     math_lang.addSentence(q)
-# print(math_lang.word2index)
-# print(math_lang.index2word)
 
 # PATH = '../tmp/train_arith_10_1111'
 # PATH = '../tmp/train_arith_3_50_1111'
-PATH = '../tmp/train_arith_3_100_4111'
+# PATH = '../tmp/train_arith_3_100_4111'
 # PATH = '../tmp/train_mixedarith_3_100_1111'
 
 # def tokenize(sentence):
@@ -38,8 +39,12 @@ A_TEXT = Field(tokenize=lambda sen: list(sen), init_token="<sos>", eos_token="<e
 
 # associate the text in the 'English' column with the EN_TEXT field, # and 'French' with FR_TEXT
 data_fields = [('Question', Q_TEXT), ('Answer', A_TEXT)]
-train, val = TabularDataset.splits(path=PATH, train='train.csv', validation='val.csv', format='csv',
-                                   fields=data_fields, skip_header=True)
+
+# train, val = TabularDataset.splits(path=PATH, train='train.csv', validation='val.csv', format='csv',
+#                                    fields=data_fields, skip_header=True)
+tab_dataset = TabularDataset(path=f'{args.path}/all.csv', format='csv', fields=data_fields, skip_header=True)
+train, val, test = tab_dataset.split(split_ratio=[0.7, 0.1, 0.2], random_state=random.getstate())
+
 Q_TEXT.build_vocab(train)
 A_TEXT.build_vocab(train)
 print('Question Tokenize')
@@ -48,29 +53,30 @@ print('Answer Tokenize')
 print(list(A_TEXT.vocab.stoi.items()))
 # print(list(A_TEXT.vocab.itos))
 
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-# device = torch.device('cpu')
-print(f'using {device}')
-
-BATCH_SIZE = 512
 INPUT_DIM = len(Q_TEXT.vocab)
 OUTPUT_DIM = len(A_TEXT.vocab)
-ENC_EMB_DIM = 256  # 256
-DEC_EMB_DIM = 256  # 256
-HID_DIM = 512  # 512
-N_LAYERS = 2
-ENC_DROPOUT = 0.5
-DEC_DROPOUT = 0.5
 
-train_iter, val_iter = BucketIterator.splits(
-    (train, val),
-    batch_size=BATCH_SIZE,
+# BATCH_SIZE = 512
+# ENC_EMB_DIM = 256  # 256
+# DEC_EMB_DIM = 256  # 256
+# HID_DIM = 512  # 512
+# N_LAYERS = 2
+# ENC_DROPOUT = 0.5
+# DEC_DROPOUT = 0.5
+
+device = torch.device(f'cuda:{args.gpu}' if torch.cuda.is_available() else 'cpu')
+# device = torch.device('cpu')
+print(f'using device {device}')
+
+train_iter, val_iter, test_iter = BucketIterator.splits(
+    (train, val, test),
+    batch_size=args.batch_size,
     shuffle=True, sort=False,
     device=device
 )
 
-enc = Encoder(INPUT_DIM, ENC_EMB_DIM, HID_DIM, N_LAYERS, ENC_DROPOUT).to(device)
-dec = Decoder(OUTPUT_DIM, DEC_EMB_DIM, HID_DIM, N_LAYERS, DEC_DROPOUT).to(device)
+enc = Encoder(INPUT_DIM, args.enc_emb_dim, args.hid_dim, args.n_layers, args.enc_dropout).to(device)
+dec = Decoder(OUTPUT_DIM, args.dec_emb_dim, args.hid_dim, args.n_layers, args.dec_dropout).to(device)
 model = Seq2Seq(enc, dec, device).to(device)
 
 
@@ -176,35 +182,40 @@ def epoch_time(start_time, end_time):
     return elapsed_mins, elapsed_secs
 
 
-N_EPOCHS = 10000
-CLIP = 1
+# N_EPOCHS = 10000
+# CLIP = 1
 
 best_valid_loss = float('inf')
 best_valid_acc = 0
 best_model = {}
-for epoch in range(N_EPOCHS):
-    start_time = time.time()
+try:
+    for epoch in range(args.n_epochs):
+        start_time = time.time()
 
-    train_loss = train(model, train_iter, optimizer, criterion, CLIP)
-    valid_loss, valid_acc = evaluate(model, val_iter, criterion)
+        train_loss = train(model, train_iter, optimizer, criterion, args.clip)
+        valid_loss, valid_acc = evaluate(model, val_iter, criterion)
 
-    end_time = time.time()
+        end_time = time.time()
 
-    epoch_mins, epoch_secs = epoch_time(start_time, end_time)
+        epoch_mins, epoch_secs = epoch_time(start_time, end_time)
 
-    if valid_loss < best_valid_loss and valid_acc > best_valid_acc:
-        best_valid_loss = valid_loss
-        best_valid_acc = valid_acc
-        best_model = copy.deepcopy(model.state_dict())
+        if valid_acc > best_valid_acc:
+            best_valid_loss = valid_loss
+            best_valid_acc = valid_acc
+            best_model = copy.deepcopy(model.state_dict())
 
-    print(f'Epoch: {epoch + 1:02} | Time: {epoch_mins}m {epoch_secs}s')
-    print(f'\tTrain Loss: {train_loss:.3f} | Train PPL: {math.exp(train_loss):7.3f}')
-    print(f'\t Val. Loss: {valid_loss:.3f} |  Val. PPL: {math.exp(valid_loss):7.3f} |  Val. ACC: {valid_acc:.3f}')
-    if valid_acc > 0.75:  # early stop
-        break
-print(f'Best Val. Loss: {best_valid_loss:.3f} |  Val. ACC: {best_valid_acc:.3f}')
-print()
-torch.save(best_model, f'{PATH}/best-{best_valid_acc:.3f}-{HID_DIM}-{SEED}.pt')
+        print(f'Epoch: {epoch + 1:02} | Time: {epoch_mins}m {epoch_secs}s')
+        print(f'\tTrain Loss: {train_loss:.3f} | Train PPL: {math.exp(train_loss):7.3f}')
+        print(f'\t Val. Loss: {valid_loss:.3f} |  Val. PPL: {math.exp(valid_loss):7.3f} |  Val. ACC: {valid_acc:.3f}')
+        if valid_acc > 0.75 or train_loss < 0.005:  # early stop
+            break
+except KeyboardInterrupt as e:
+    print(e)
+finally:
+
+    print(f'Best Val. Loss: {best_valid_loss:.3f} |  Val. ACC: {best_valid_acc:.3f}')
+    print()
+    torch.save(best_model, f'{args.path}/best-{best_valid_acc:.3f}-{args.hid_dim}-{args.seed}.pt')
 
 
 def detokenize(pred, table, EOS_IDX):
@@ -213,40 +224,33 @@ def detokenize(pred, table, EOS_IDX):
 
 
 def revtok(batch_pred, table, EOS_IDX=3):
-    # from multiprocessing import Process, Manager
-    # pool = []
-    # manager = Manager()
-    # return_dict = manager.dict()
-    # return_dict['tab'] = table
-
     s = batch_pred.size()
     # print(pred)
     return [detokenize(batch_pred[:, col], table, EOS_IDX) for col in range(s[1])]
 
 
 if __name__ == '__main__':
-    df = pd.DataFrame(columns=['Question', 'Answer', 'Output', 'Eval'])
     model.load_state_dict(best_model)
-    _, acc = evaluate(model, val_iter, criterion)
+    _, acc = evaluate(model, test_iter, criterion)
     print(acc)
     model.eval()
 
+    df = pd.DataFrame(columns=['Question', 'Answer', 'Output', 'Eval'])
     with torch.no_grad():
-        for i, batch in enumerate(val_iter):
+        for i, batch in enumerate(test_iter):
             src = batch.Question
             trg = batch.Answer
             qus = revtok(src, Q_TEXT.vocab.itos, Q_TEXT.vocab.stoi['<eos>'])
-            print(qus)
             ans = revtok(trg, A_TEXT.vocab.itos, A_TEXT.vocab.stoi['<eos>'])
-            print(ans)
             # print(trg)
             output = model(src, trg, 0)  # turn off teacher forcing
             pred = output[1:].argmax(dim=2)
             pre = revtok(pred, A_TEXT.vocab.itos, A_TEXT.vocab.stoi['<eos>'])
-            print(pre)
-
+            # print(qus)
+            # print(ans)
+            # print(pre)
             df = df.append(pd.DataFrame({'Question': qus, 'Answer': ans, 'Output': pre}), sort=False)
 
     df['Eval'] = (df['Output'] == df['Answer'])
     acc = df['Eval'].sum() / len(df['Eval'])
-    df.to_csv(f'{PATH}/val_answered_{acc:.3f}.csv', index=False)
+    df.to_csv(f'{args.path}/test_answered_{acc:.3f}.csv', index=False)
