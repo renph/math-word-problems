@@ -2,15 +2,14 @@ import copy
 import math
 import random
 import time
+import argparse
 
-import pandas as pd
 import torch
 from torch import nn, optim
 from torchtext.data import Field, BucketIterator, TabularDataset
 
 from model.seq2seq import Encoder, Decoder, Seq2Seq
 from utils.config import Config
-import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--config', type=str, default='',
@@ -33,11 +32,11 @@ torch.backends.cudnn.deterministic = True
 # def tokenize(sentence):
 #     return [tok for tok in sentence]
 
-
 Q_TEXT = Field(tokenize=lambda sen: list(sen), init_token="<sos>", eos_token="<eos>")
 A_TEXT = Field(tokenize=lambda sen: list(sen), init_token="<sos>", eos_token="<eos>")
 
-# associate the text in the 'English' column with the EN_TEXT field, # and 'French' with FR_TEXT
+# associate the text in the 'Question' column with the Q_TEXT field,
+# and 'Answer' with A_TEXT field
 data_fields = [('Question', Q_TEXT), ('Answer', A_TEXT)]
 
 # train, val = TabularDataset.splits(path=PATH, train='train.csv', validation='val.csv', format='csv',
@@ -75,6 +74,7 @@ train_iter, val_iter, test_iter = BucketIterator.splits(
     device=device
 )
 
+# build model
 enc = Encoder(INPUT_DIM, args.enc_emb_dim, args.hid_dim, args.n_layers, args.enc_dropout).to(device)
 dec = Decoder(OUTPUT_DIM, args.dec_emb_dim, args.hid_dim, args.n_layers, args.dec_dropout).to(device)
 model = Seq2Seq(enc, dec, device).to(device)
@@ -212,22 +212,9 @@ try:
 except KeyboardInterrupt as e:
     print(e)
 finally:
-
     print(f'Best Val. Loss: {best_valid_loss:.3f} |  Val. ACC: {best_valid_acc:.3f}')
     print()
     torch.save(best_model, f'{args.path}/best-{best_valid_acc:.3f}-{args.hid_dim}-{args.seed}.pt')
-
-
-def detokenize(pred, table, EOS_IDX):
-    # print(pred)
-    return "".join([table[tok] for tok in pred if tok > EOS_IDX])
-
-
-def revtok(batch_pred, table, EOS_IDX=3):
-    s = batch_pred.size()
-    # print(pred)
-    return [detokenize(batch_pred[:, col], table, EOS_IDX) for col in range(s[1])]
-
 
 if __name__ == '__main__':
     model.load_state_dict(best_model)
@@ -235,22 +222,6 @@ if __name__ == '__main__':
     print(acc)
     model.eval()
 
-    df = pd.DataFrame(columns=['Question', 'Answer', 'Output', 'Eval'])
-    with torch.no_grad():
-        for i, batch in enumerate(test_iter):
-            src = batch.Question
-            trg = batch.Answer
-            qus = revtok(src, Q_TEXT.vocab.itos, Q_TEXT.vocab.stoi['<eos>'])
-            ans = revtok(trg, A_TEXT.vocab.itos, A_TEXT.vocab.stoi['<eos>'])
-            # print(trg)
-            output = model(src, trg, 0)  # turn off teacher forcing
-            pred = output[1:].argmax(dim=2)
-            pre = revtok(pred, A_TEXT.vocab.itos, A_TEXT.vocab.stoi['<eos>'])
-            # print(qus)
-            # print(ans)
-            # print(pre)
-            df = df.append(pd.DataFrame({'Question': qus, 'Answer': ans, 'Output': pre}), sort=False)
+    from utils.postprocess import evaluate_results
 
-    df['Eval'] = (df['Output'] == df['Answer'])
-    acc = df['Eval'].sum() / len(df['Eval'])
-    df.to_csv(f'{args.path}/test_answered_{acc:.3f}.csv', index=False)
+    evaluate_results(model, test_iter, Q_TEXT, A_TEXT, f'{args.path}', 'test')

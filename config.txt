@@ -1,4 +1,4 @@
-path='../tmp/train_arith_3_50_1111'
+path='./tmp/train_arith_3_50_1111'
 batch_size = 512
 n_epochs = 500
 seed=1234
