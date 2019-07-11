@@ -28,6 +28,6 @@ def main(args):
 
 if __name__ == '__main__':
     args = None
-    # args = ['--output-dir', r'../tmp', '--max-bound', '100', '--seed', '1111',
-    #         '--test-size', '0.2']
+    args = ['--output-dir', r'./tmp', '--max-bound', '50', '--seed', '4111',
+            '--test-size', '0.2', '--mixed']
     main(args)

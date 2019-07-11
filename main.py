@@ -42,7 +42,7 @@ data_fields = [('Question', Q_TEXT), ('Answer', A_TEXT)]
 # train, val = TabularDataset.splits(path=PATH, train='train.csv', validation='val.csv', format='csv',
 #                                    fields=data_fields, skip_header=True)
 tab_dataset = TabularDataset(path=f'{args.path}/all.csv', format='csv', fields=data_fields, skip_header=True)
-train, val, test = tab_dataset.split(split_ratio=[0.7, 0.1, 0.2], random_state=random.getstate())
+train, val, test = tab_dataset.split(split_ratio=[0.5, 0.2, 0.3], random_state=random.getstate())
 
 Q_TEXT.build_vocab(train)
 A_TEXT.build_vocab(train)
@@ -213,15 +213,11 @@ except KeyboardInterrupt as e:
     print(e)
 finally:
     print(f'Best Val. Loss: {best_valid_loss:.3f} |  Val. ACC: {best_valid_acc:.3f}')
-    print()
     torch.save(best_model, f'{args.path}/best-{best_valid_acc:.3f}-{args.hid_dim}-{args.seed}.pt')
-
-if __name__ == '__main__':
     model.load_state_dict(best_model)
     _, acc = evaluate(model, test_iter, criterion)
-    print(acc)
+    print(f'Test ACC: {acc:.3f}')
     model.eval()
 
     from utils.postprocess import evaluate_results
-
     evaluate_results(model, test_iter, Q_TEXT, A_TEXT, f'{args.path}', 'test')

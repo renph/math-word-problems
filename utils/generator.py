@@ -49,9 +49,17 @@ class MixedArithmeticGenerator(ArithmeticGenerator):
             for j in range(self.bound):
                 for op in self.ops:
                     self.addProb(f'{i}{op}{j}')
-                    rand_op = self.rand.choice(self.ops)
-                    rand_num = self.rand.randint(self.bound)
-                    self.addProb(f'{i}{op}{j}{rand_op}{rand_num}')
+                    for op2 in self.ops:
+                        for num in range(self.bound):
+                            self.addProb(f'{i}{op}{j}{op2}{num}')
+                            for op3 in self.ops:
+                                for num2 in range(self.bound):
+                                    # # self.addProb(f'{i}{op}{j}')
+                                    # rand_op = self.rand.choice(self.ops)
+                                    # rand_num = self.rand.randint(self.bound)
+                                    # self.addProb(f'{i}{op}{j}{rand_op}{rand_num}')
+                                    self.addProb(f'{i}{op}{j}{op2}{num}{op3}{num2}')
+
 
 
 # class MathLang:
