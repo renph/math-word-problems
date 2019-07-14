@@ -157,10 +157,10 @@ def evaluate(model, iterator, criterion):
             epoch_loss += loss.item()
     return epoch_loss / len(iterator), epoch_acc / total
 
-
 best_valid_loss = float('inf')
 best_valid_acc = 0
 best_model = {}
+count = 0
 try:
     for epoch in range(args.n_epochs):
         start_time = time.time()
@@ -176,11 +176,13 @@ try:
             best_valid_loss = valid_loss
             best_valid_acc = valid_acc
             best_model = copy.deepcopy(model.state_dict())
-
+            count = 0
+        else:
+            count += 1
         print(f'Epoch: {epoch + 1:02} | Time: {epoch_mins}m {epoch_secs}s')
         print(f'\tTrain Loss: {train_loss:.3f} | Train PPL: {math.exp(train_loss):7.3f}')
         print(f'\t Val. Loss: {valid_loss:.3f} |  Val. PPL: {math.exp(valid_loss):7.3f} |  Val. ACC: {valid_acc:.3f}')
-        if valid_acc > 0.93 or train_loss < 0.005:  # early stop
+        if valid_acc > 0.95 or train_loss < 0.005 or count > 50:  # early stop
             break
 except Exception as e:
     print(e)
