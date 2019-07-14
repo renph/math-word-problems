@@ -1,5 +1,6 @@
 import pandas as pd
 import torch
+from torchtext.data import TabularDataset, BucketIterator
 
 
 def detokenize(pred, table, EOS_IDX):
@@ -34,3 +35,14 @@ def evaluate_results(model, batch_iter, Q_TEXT, A_TEXT, path,name=""):
     df['Eval'] = (df['Output'] == df['Answer'])
     acc = df['Eval'].sum() / len(df['Eval'])
     df.to_csv(f'{path}/{name}_answered_{acc:.3f}.csv', index=False)
+
+
+def evaluate_dataset(dataset_path, data_fields, device, model, Q_TEXT, A_TEXT, save_path, name=""):
+    tab_dataset = TabularDataset(path=f'{dataset_path}/all.csv', format='csv', fields=data_fields, skip_header=True)
+    data_iter = BucketIterator(
+        tab_dataset,
+        batch_size=128,
+        shuffle=False, sort=False,
+        device=device
+    )
+    evaluate_results(model, data_iter, Q_TEXT, A_TEXT, save_path, name)

@@ -12,7 +12,7 @@ class Encoder(nn.Module):
         self.hid_dim = hid_dim
         self.n_layers = n_layers
         self.dropout = dropout
-        self.embedding = nn.Embedding(input_dim, emb_dim)
+        self.embedding = nn.Embedding(input_dim, emb_dim, padding_idx=1)
         self.rnn = nn.LSTM(emb_dim, hid_dim, n_layers, dropout=dropout)
         self.dropout = nn.Dropout(dropout)
 
@@ -30,7 +30,7 @@ class Decoder(nn.Module):
         self.output_dim = output_dim
         self.n_layers = n_layers
         self.dropout = dropout
-        self.embedding = nn.Embedding(output_dim, emb_dim)
+        self.embedding = nn.Embedding(output_dim, emb_dim, padding_idx=1)
         self.rnn = nn.LSTM(emb_dim, hid_dim, n_layers, dropout=dropout)
         self.out = nn.Linear(hid_dim, output_dim)
         self.dropout = nn.Dropout(dropout)
@@ -54,6 +54,11 @@ class Seq2Seq(nn.Module):
             "Hidden dimensions of encoder and decoder must be equal!"
         assert encoder.n_layers == decoder.n_layers, \
             "Encoder and decoder must have equal number of layers!"
+        self.init_weights()
+
+    def init_weights(self):
+        for name, param in self.named_parameters():
+            nn.init.uniform_(param.data, -0.08, 0.08)
 
     def forward(self, src, trg, teacher_forcing_ratio=0.5):
         # src = [src sent len, batch size]

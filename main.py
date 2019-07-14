@@ -10,6 +10,7 @@ from torchtext.data import Field, BucketIterator, TabularDataset
 
 from model.seq2seq import Encoder, Decoder, Seq2Seq
 from utils.config import Config
+from utils import count_parameters, fix_seed, epoch_time
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--config', type=str, default='',
@@ -18,16 +19,12 @@ parser.add_argument('--config', type=str, default='',
 args = parser.parse_args(args=['--config', 'config.txt'])
 if args.config:
     args = Config(args.config)
+if args.show:
+    from utils import enable_tqdm as tqdm
+else:
+    from utils import disable_tqdm as tqdm
 
-# SEED = 1234
-random.seed(args.seed)
-torch.manual_seed(args.seed)
-torch.backends.cudnn.deterministic = True
-
-# PATH = '../tmp/train_arith_10_1111'
-# PATH = '../tmp/train_arith_3_50_1111'
-# PATH = '../tmp/train_arith_3_100_4111'
-# PATH = '../tmp/train_mixedarith_3_100_1111'
+fix_seed(args.seed)
 
 # def tokenize(sentence):
 #     return [tok for tok in sentence]
@@ -79,21 +76,7 @@ enc = Encoder(INPUT_DIM, args.enc_emb_dim, args.hid_dim, args.n_layers, args.enc
 dec = Decoder(OUTPUT_DIM, args.dec_emb_dim, args.hid_dim, args.n_layers, args.dec_dropout).to(device)
 model = Seq2Seq(enc, dec, device).to(device)
 
-
-def init_weights(m):
-    for name, param in m.named_parameters():
-        nn.init.uniform_(param.data, -0.08, 0.08)
-
-
-model.apply(init_weights)
-
 print(model)
-
-
-def count_parameters(model):
-    return sum(p.numel() for p in model.parameters() if p.requires_grad)
-
-
 print(f'The model has {count_parameters(model):,} trainable parameters')
 
 optimizer = optim.Adam(model.parameters(), lr=1e-3)
@@ -105,7 +88,7 @@ def train(model, iterator, optimizer, criterion, clip):
     model.train()
     epoch_loss = 0
 
-    for i, batch in enumerate(iterator):
+    for i, batch in tqdm(enumerate(iterator), total=len(iterator)):
         src = batch.Question
         trg = batch.Answer
 
@@ -175,16 +158,6 @@ def evaluate(model, iterator, criterion):
     return epoch_loss / len(iterator), epoch_acc / total
 
 
-def epoch_time(start_time, end_time):
-    elapsed_time = end_time - start_time
-    elapsed_mins = int(elapsed_time / 60)
-    elapsed_secs = int(elapsed_time - (elapsed_mins * 60))
-    return elapsed_mins, elapsed_secs
-
-
-# N_EPOCHS = 10000
-# CLIP = 1
-
 best_valid_loss = float('inf')
 best_valid_acc = 0
 best_model = {}
@@ -199,7 +172,7 @@ try:
 
         epoch_mins, epoch_secs = epoch_time(start_time, end_time)
 
-        if valid_acc > best_valid_acc:
+        if valid_acc > best_valid_acc and valid_loss < best_valid_loss:
             best_valid_loss = valid_loss
             best_valid_acc = valid_acc
             best_model = copy.deepcopy(model.state_dict())
@@ -207,9 +180,9 @@ try:
         print(f'Epoch: {epoch + 1:02} | Time: {epoch_mins}m {epoch_secs}s')
         print(f'\tTrain Loss: {train_loss:.3f} | Train PPL: {math.exp(train_loss):7.3f}')
         print(f'\t Val. Loss: {valid_loss:.3f} |  Val. PPL: {math.exp(valid_loss):7.3f} |  Val. ACC: {valid_acc:.3f}')
-        if valid_acc > 0.85 or train_loss < 0.005:  # early stop
+        if valid_acc > 0.93 or train_loss < 0.005:  # early stop
             break
-except KeyboardInterrupt as e:
+except Exception as e:
     print(e)
 finally:
     print(f'Best Val. Loss: {best_valid_loss:.3f} |  Val. ACC: {best_valid_acc:.3f}')
@@ -220,4 +193,5 @@ finally:
     model.eval()
 
     from utils.postprocess import evaluate_results
+
     evaluate_results(model, test_iter, Q_TEXT, A_TEXT, f'{args.path}', 'test')
