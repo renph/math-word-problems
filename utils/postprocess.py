@@ -1,20 +1,35 @@
 import pandas as pd
 import torch
 from torchtext.data import TabularDataset, BucketIterator
+import multiprocessing
+from functools import partial
+from itertools import takewhile
 
 
 def detokenize(pred, table, EOS_IDX):
     # print(pred)
-    return "".join([table[tok] for tok in pred if tok > EOS_IDX])
+    # print(EOS_IDX)
+    sen = takewhile(lambda x: x != EOS_IDX, pred)
+    return "".join([table[tok] for tok in list(sen) if tok > EOS_IDX])
+
+
+def next_col(batch_pred):
+    batch_size = batch_pred.size()
+    batch_pred = batch_pred.cpu()
+    for col in range(batch_size[1]):
+        yield batch_pred[:, col]
 
 
 def revtok(batch_pred, table, EOS_IDX=3):
-    s = batch_pred.size()
     # print(pred)
-    return [detokenize(batch_pred[:, col], table, EOS_IDX) for col in range(s[1])]
+    pool = multiprocessing.Pool(4)
+    # res = pool.map(lambda col: detokenize(batch_pred[:, col], table, EOS_IDX), range(s[1]))
+    res = pool.map(partial(detokenize, table=table, EOS_IDX=EOS_IDX), next_col(batch_pred))
+    # return [detokenize(batch_pred[:, col], table, EOS_IDX) for col in range(s[1])]
+    return res
 
 
-def evaluate_results(model, batch_iter, Q_TEXT, A_TEXT, path,name=""):
+def evaluate_results(model, batch_iter, Q_TEXT, A_TEXT, path, name=""):
     model.eval()
     df = pd.DataFrame(columns=['Question', 'Answer', 'Output', 'Eval'])
     with torch.no_grad():
@@ -24,12 +39,14 @@ def evaluate_results(model, batch_iter, Q_TEXT, A_TEXT, path,name=""):
             qus = revtok(src, Q_TEXT.vocab.itos, Q_TEXT.vocab.stoi['<eos>'])
             ans = revtok(trg, A_TEXT.vocab.itos, A_TEXT.vocab.stoi['<eos>'])
             # print(trg)
-            output = model(src, trg, 0)  # turn off teacher forcing
+            output = model(src, trg)  # turn off teacher forcing
             pred = output[1:].argmax(dim=2)
             pre = revtok(pred, A_TEXT.vocab.itos, A_TEXT.vocab.stoi['<eos>'])
-            # print(qus)
-            # print(ans)
-            # print(pre)
+            # print(src[:, :5])
+            # print(pred[:, :5])
+            # print(qus[:5])
+            # print(ans[:5])
+            # print(pre[:5])
             df = df.append(pd.DataFrame({'Question': qus, 'Answer': ans, 'Output': pre}), sort=False)
 
     df['Eval'] = (df['Output'] == df['Answer'])
@@ -41,7 +58,7 @@ def evaluate_dataset(dataset_path, data_fields, device, model, Q_TEXT, A_TEXT, s
     tab_dataset = TabularDataset(path=f'{dataset_path}/all.csv', format='csv', fields=data_fields, skip_header=True)
     data_iter = BucketIterator(
         tab_dataset,
-        batch_size=128,
+        batch_size=512,
         shuffle=False, sort=False,
         device=device
     )
