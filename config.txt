@@ -1,14 +1,15 @@
-path='./tmp/train_arith_3_50_1111'
-batch_size = 512
-n_epochs = 500
-seed=1234
+path='./tmp/train_arith_3_1000_1111'
+batch_size = 1024
+n_epochs = 15
+seed = 1234
 clip = 1
 
-enc_emb_dim = 256
-dec_emb_dim = 256
-hid_dim = 512
+enc_emb_dim = 32
+dec_emb_dim = 32
+hid_dim = 256
 n_layers = 2
 enc_dropout = 0.5
 dec_dropout = 0.5
 
 gpu = 0
+show = True
